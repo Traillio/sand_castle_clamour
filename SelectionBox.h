@@ -28,7 +28,7 @@ private:
 
 public:
     int execute(wav64_t& sfx);
-    void draw(rdpq_font_t* font);
+    void draw();
     void addOption(std::string option);
     void clearOptions();
     void setCurrentOption(size_t index);

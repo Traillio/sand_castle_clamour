@@ -5,7 +5,7 @@
 
 class MainMenuState : public State
 {
-    enum Selection{START_GAME, INSTRUCTIONS, LEVEL_SELECT};
+    enum Selection{START_GAME, INSTRUCTIONS, LEVEL_SELECT, HIGH_SCORES};
 
     public:
     MainMenuState();
@@ -18,4 +18,6 @@ class MainMenuState : public State
 
     TexturedModel skybox;
     SelectionBox m_selectionBox;
+
+    bool viewingControls = false;
 };

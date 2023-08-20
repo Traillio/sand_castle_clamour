@@ -16,7 +16,6 @@ public:
     virtual void renderGl() = 0;
     virtual void renderRdpq() = 0;
     State* nextState = nullptr;
-    rdpq_font_t* m_font;
 
 protected:
     Camera camera;

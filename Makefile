@@ -12,7 +12,7 @@ assets_wav = $(wildcard assets/*.wav)
 assets_conv = 	$(addprefix filesystem/,$(notdir $(assets_png:%.png=%.sprite))) \
 				$(addprefix filesystem/,$(notdir $(assets_gltf:%.gltf=%.model64))) \
 				$(addprefix filesystem/,$(notdir $(assets_ttf:%.ttf=%.font64))) \
-				$(addprefix filesystem/,$(notdir $(assets_txt:%.txt=%.lvl))) \
+				$(addprefix filesystem/,$(notdir $(assets_txt:%.txt=%.txt))) \
 				$(addprefix filesystem/,$(notdir $(assets_wav:%.wav=%.wav64)))
 
 MKSPRITE_FLAGS ?= --optimize --compress
@@ -36,7 +36,7 @@ filesystem/%.font64: assets/%.ttf
 	@echo "    [FONT] $@"
 	@$(N64_MKFONT) $(MKFONT_FLAGS) -o filesystem "$<"
 
-filesystem/%.lvl: assets/%.txt
+filesystem/%.txt: assets/%.txt
 	@mkdir -p $(dir $@)
 	@echo "    [LVL] $@"
 	@$(N64_MKASSET) $(MKASSET_FLAGS) -o "$(dir $@)" "$<"
@@ -50,6 +50,7 @@ $(BUILD_DIR)/beach.dfs: $(assets_conv)
 $(BUILD_DIR)/beach.elf: $(src:%.cpp=$(BUILD_DIR)/%.o)
 
 beach.z64: N64_ROM_TITLE="The beach game"
+beach.z64: N64_ROM_SAVETYPE = eeprom4k
 beach.z64: $(BUILD_DIR)/beach.dfs
 
 clean:

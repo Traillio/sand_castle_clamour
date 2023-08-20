@@ -1,12 +1,16 @@
 #pragma once
 #include "MainMenuState.h"
+#include "TextBox.h"
 
-class LevelSelectState : public MainMenuState
+
+class StartGameState : public MainMenuState
 {
-
+    
 public:
-    LevelSelectState();
-
+    StartGameState();
     virtual void execute() override;
     virtual void renderRdpq() override;
+private:
+    TextBox m_textBox;
+
 };

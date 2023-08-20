@@ -45,7 +45,7 @@ int SelectionBox::execute(wav64_t& sfx)
     return -1;
 }
 
-void SelectionBox::draw(rdpq_font_t* font)
+void SelectionBox::draw()
 {
         
         rdpq_set_mode_fill(RGBA32(0x00, 0x00, 0x00, 0xFF));
@@ -57,12 +57,12 @@ void SelectionBox::draw(rdpq_font_t* font)
         for(size_t i = 0; i < m_options.size(); ++i)
         {
             rdpq_font_position(115, m_yPos + (i * SPACE_BETWEEN_OPTIONS) + SPACE_BETWEEN_OPTIONS);
-            rdpq_font_print(font, m_options[i].c_str());
+            rdpq_font_print(global::font, m_options[i].c_str());
         }
 
         rdpq_font_scale(1.0f, 1.0f);
         rdpq_font_position(85, m_currentOption * SPACE_BETWEEN_OPTIONS + m_yPos + 5 + SPACE_BETWEEN_OPTIONS);
-        rdpq_font_print(font, ">");
+        rdpq_font_print(global::font, ">");
 
         rdpq_font_end();
 }

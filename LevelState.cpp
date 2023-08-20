@@ -1,7 +1,7 @@
-#include "MainMenuState.h"
+#include "EndState.h"
 #include "LevelState.h"
 
-LevelState::LevelState(const size_t level) : m_selectionBox(80, 120), m_currentLevel(level)
+LevelState::LevelState(const size_t level) : m_selectionBox(80, 60), m_currentLevel(level), m_levelLoader(*this)
 {
     camera.resetCamera();
     glClearColor(0, 0, 1, 1);
@@ -10,21 +10,21 @@ LevelState::LevelState(const size_t level) : m_selectionBox(80, 120), m_currentL
 
     char str[20];
     sprintf(str, "rom:/level_%d.txt", m_currentLevel);
-    loadLevel(str);
+    m_levelLoader.loadLevel(str);
 
     m_timer = m_amountOfTimeToObserve;
     cursor.getModel().setModel("cube");
 
-    water.setTexture("skybox");
+    water.setTexture("water");
     water.setModel("water");
     water.setScale({106.0f, 106.0f, 106.0f});
-    water.moveY(-5.9f);
+    water.moveY(-5.8f);
     water.moveZ(-60.0f);
 
-    wav64_open(&m_ambience, "rom:/ambience.wav64");
-    wav64_set_loop(&m_ambience, true);
-    wav64_play(&m_ambience, AUDIO_CHANNEL_MUSIC);
-    mixer_ch_set_vol(AUDIO_CHANNEL_MUSIC, 0.1f, 0.1f);
+    //wav64_open(&m_ambience, "rom:/ambience.wav64");
+    //wav64_set_loop(&m_ambience, true);
+    //wav64_play(&m_ambience, AUDIO_CHANNEL_MUSIC);
+    //mixer_ch_set_vol(AUDIO_CHANNEL_MUSIC, 0.1f, 0.1f);
 }
 
 LevelState::~LevelState()
@@ -35,8 +35,6 @@ LevelState::~LevelState()
 
 void LevelState::execute()
 {
-
-
     if (audio_can_write())
     {
         short *buf = audio_write_begin();
@@ -45,34 +43,29 @@ void LevelState::execute()
     }
 
     controller_scan();
-    struct controller_data pressed = get_keys_pressed();
-    struct controller_data down = get_keys_down();
-
-    float y = pressed.c[0].y / 128.f;
-    float x = pressed.c[0].x / 128.f;
-
-    if (down.c[0].start && mode == BUILD)
-    {
-        if(paused)
-        {
-            paused = false;
-        }
-        else
-        {
-            paused = true;
-            m_selectionBox.clearOptions();
-            m_selectionBox.addOption("Resume");
-            m_selectionBox.addOption("Restart");
-            m_selectionBox.addOption("Quit");
-        }
-    }
+    
+    m_buttonsPressed = get_keys_pressed();
+    m_buttonsDown = get_keys_down();
 
     if(paused)
     {
+        if(viewingControls)
+        {
+            if (m_buttonsDown.c[0].B)
+            {
+                viewingControls = false;
+            }
+            return;
+        }
+
         switch (m_selectionBox.execute(m_cursorMove))
         {
         case RESUME:
             paused = false;
+            break;
+        case SUBMIT:
+            paused = false;
+            setModeResults();
             break;
         case RESTART:
             resetLevel();
@@ -81,6 +74,9 @@ void LevelState::execute()
         case QUIT:
             nextState = new MainMenuState();
             break;
+        case CONTROLS:
+            viewingControls = true;
+            break;
         
         default:
             break;
@@ -88,127 +84,18 @@ void LevelState::execute()
 
         return;
     }
-
-    if (mode == OBSERVE || mode == BUILD)
+    else
     {
-        m_timer -= global::elapsedSeconds;
-        camera.Transform();
-        cursor.transformCursor();
-
-        if (down.c[0].Z)
+        switch (mode)
         {
-            camera.lookDown = !camera.lookDown;
-        }
-
-        // handle camera movement
-        if (pressed.c[0].C_up)
-        {
-            camera.MoveUp();
-            cursor.moveUp();
-        }
-        else if (pressed.c[0].C_down)
-        {
-            camera.MoveDown();
-            cursor.moveDown();
-        }
-
-        if (pressed.c[0].C_right)
-        {
-            camera.RotateRight();
-        }
-        else if (pressed.c[0].C_left)
-        {
-            camera.RotateLeft();
-        }
-    }
-
-    if (mode == OBSERVE && m_timer <= 0.0f)
-    {
-        m_timer = m_amountOfTimeToBuild;
-        mode = BUILD;
-    }
-    else if (mode == BUILD)
-    {
-        float amountToMove = 60.0f / (float)m_amountOfTimeToBuild * global::elapsedSeconds;
-
-        water.moveZ(amountToMove);
-        water.moveY(amountToMove / 10.0f);
-
-        const vec3i cursorPos = cursor.getPosition();
-        cursor.inEmptySpace = !placed[cursorPos.y][cursorPos.z][cursorPos.x];
-
-        if (pressed.c[0].A)
-        {
-            if (cursor.inEmptySpace && m_numBlocksPlaced < m_numBlocksInCastle)
-            {
-                placed[cursorPos.y][cursorPos.z][cursorPos.x] = true;
-                m_numBlocksPlaced++;
-            }
-        }
-
-        if (pressed.c[0].B)
-        {
-            if (!cursor.inEmptySpace)
-            {
-                placed[cursorPos.y][cursorPos.z][cursorPos.x] = false;
-                m_numBlocksPlaced--;
-            }
-        }
-        if(!camera.isRotating())
-        {
-            if (pressed.c[0].left || x < -0.3f)
-            {
-                cursor.moveLeft(camera.getRotation());
-                wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
-            }
-            else if (pressed.c[0].right || x > 0.3f)
-            {
-                cursor.moveRight(camera.getRotation());
-                wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
-            }
-
-            if (pressed.c[0].up || y > 0.3f)
-            {
-                cursor.moveForward(camera.getRotation());
-                wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
-            }
-            else if (pressed.c[0].down || y < -0.3f)
-            {
-                cursor.moveBackward(camera.getRotation());
-                wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
-            }
-        }
-
-
-        if (m_timer <= 0.0f)
-        {
-            mode = RESULTS;
-            calculateScore();
-
-            m_selectionBox.clearOptions();
-            m_selectionBox.addOption("Main Menu");
-            m_selectionBox.addOption("Restart Level");
-            m_selectionBox.setCurrentOption(1);
-            
-            if(m_score > 75.0f)
-            {
-                m_selectionBox.addOption("Next Level");
-                m_selectionBox.setCurrentOption(2);
-            }
-        }
-    }
-    else if (mode == RESULTS)
-    {
-        switch (m_selectionBox.execute(m_cursorMove))
-        {
-        case NEXT_LEVEL:
-            nextLevel();
+        case BUILD:
+            executeBuild();
             break;
-        case REPLAY:
-            resetLevel();
+        case OBSERVE:
+            executeObserve();
             break;
-        case MAIN_MENU:
-            nextState = new MainMenuState();
+        case RESULTS:
+            executeResults();
             break;
         
         default:
@@ -218,6 +105,153 @@ void LevelState::execute()
 
 }
 
+void LevelState::executeObserve()
+{
+    m_timer -= global::elapsedSeconds;
+
+    executeCamera();
+
+    if(m_buttonsDown.c[0].B || m_timer <= 0.0f)
+    {
+        setModeBuild();
+    }
+}
+
+void LevelState::executeBuild()
+{
+
+    if (m_buttonsDown.c[0].start)
+    {
+        if(paused)
+        {
+            paused = false;
+            viewingControls = false;
+        }
+        else
+        {
+            paused = true;
+            m_selectionBox.clearOptions();
+            m_selectionBox.addOption("Resume");
+            m_selectionBox.addOption("Submit");
+            m_selectionBox.addOption("Restart");
+            m_selectionBox.addOption("Quit");
+            m_selectionBox.addOption("Controls");
+        }
+    }
+
+    m_timer -= global::elapsedSeconds;
+
+    executeCamera();
+
+    float amountToMove = 60.0f / (float)m_amountOfTimeToBuild * global::elapsedSeconds;
+    water.moveZ(amountToMove);
+    water.moveY(amountToMove / 10.0f);
+
+    const vec3i cursorPos = cursor.getPosition();
+    cursor.inEmptySpace = !placed[cursorPos.y][cursorPos.z][cursorPos.x];
+    
+    if (m_buttonsPressed.c[0].A)
+    {
+        if (cursor.inEmptySpace && m_numBlocksPlaced < m_numBlocksInCastle)
+        {
+            placed[cursorPos.y][cursorPos.z][cursorPos.x] = true;
+            m_numBlocksPlaced++;
+        }
+    }
+
+    if (m_buttonsPressed.c[0].B)
+    {
+        if (!cursor.inEmptySpace)
+        {
+            placed[cursorPos.y][cursorPos.z][cursorPos.x] = false;
+            m_numBlocksPlaced--;
+        }
+    }
+    if(!camera.isRotating())
+    {
+        float analogY = m_buttonsPressed.c[0].y / 128.f;
+        float analogX = m_buttonsPressed.c[0].x / 128.f;
+
+        if (m_buttonsPressed.c[0].left || analogX < -0.3f)
+        {
+            cursor.moveLeft(camera.getRotation());
+            wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
+        }
+        else if (m_buttonsPressed.c[0].right || analogX > 0.3f)
+        {
+            cursor.moveRight(camera.getRotation());
+            wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
+        }
+
+        if (m_buttonsPressed.c[0].up || analogY > 0.3f)
+        {
+            cursor.moveForward(camera.getRotation());
+            wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
+        }
+        else if (m_buttonsPressed.c[0].down || analogY < -0.3f)
+        {
+            cursor.moveBackward(camera.getRotation());
+            wav64_play(&m_cursorMove, AUDIO_CHANNEL_SFX);
+        }
+    }
+
+    if (m_timer <= 0.0f)
+    {
+        setModeResults();
+    }
+}
+
+void LevelState::executeResults()
+{
+    switch (m_selectionBox.execute(m_cursorMove))
+    {
+    case NEXT_LEVEL:
+        nextLevel();
+        break;
+    case REPLAY:
+        resetLevel();
+        break;
+    case MAIN_MENU:
+        nextState = new MainMenuState();
+        break;
+    
+    default:
+        break;
+    }
+}
+
+void LevelState::executeCamera()
+{
+    camera.Transform();
+    cursor.transformCursor();
+
+    if (m_buttonsDown.c[0].Z)
+    {
+        camera.lookDown = !camera.lookDown;
+    }
+
+    // handle camera movement
+    if (m_buttonsPressed.c[0].C_up)
+    {
+        camera.MoveUp();
+        cursor.moveUp();
+    }
+    else if (m_buttonsPressed.c[0].C_down)
+    {
+        camera.MoveDown();
+        cursor.moveDown();
+    }
+
+    if (m_buttonsPressed.c[0].C_right)
+    {
+        camera.RotateRight();
+    }
+    else if (m_buttonsPressed.c[0].C_left)
+    {
+        camera.RotateLeft();
+    }
+}
+
 void LevelState::renderGl()
 {
     for (auto &model : models)
@@ -225,16 +259,8 @@ void LevelState::renderGl()
         model.draw();
     }
 
-    bool(*arrayToDraw)[10][10][10];
-
-    if (mode != OBSERVE)
-    {
-        arrayToDraw = &placed;
-    }
-    else
-    {
-        arrayToDraw = &castle;
-    }
+    bool(*arrayToDraw)[10][10][10]; // pointer to the array to draw
+    arrayToDraw = mode != OBSERVE ? &placed : &castle;
 
     GLuint listId = modelMan::getId("cube");
     glEnable(GL_TEXTURE_2D);
@@ -278,172 +304,48 @@ void LevelState::renderGl()
 
 void LevelState::renderRdpq()
 {
-    if (mode == OBSERVE || mode == BUILD)
+    if(paused)
     {
-        const char *modeMessage;
-        if(!paused)
+        if(viewingControls)
         {
-            modeMessage = (mode == OBSERVE) ? "Observe!" : " Build! ";
+            utils::drawControls();
         }
         else
         {
-            modeMessage = " Paused!";
+            drawText(" Paused");
+            m_selectionBox.draw();
         }
-        
-
-        rdpq_font_begin(RGBA32(0x00, 0xff, 0x00, 0xFF));
-        rdpq_font_scale(1.0f, 1.0f);
-        rdpq_font_position(90, 20);
-        rdpq_font_print(m_font, modeMessage);
-
-        rdpq_font_scale(0.5f, 0.5f);
-        rdpq_font_position(80, 40);
-        rdpq_font_printf(m_font, "Time remaining: %d", (int)ceilf(m_timer));
-        rdpq_font_end();
     }
     else
     {
-        rdpq_font_begin(RGBA32(0x00, 0xff, 0x00, 0xFF));
-        rdpq_font_scale(1.0f, 1.0f);
-        rdpq_font_position(90, 20);
-        rdpq_font_print(m_font, "Results!");
-
-        rdpq_font_scale(0.5f, 0.5f);
-        rdpq_font_position(80, 40);
-        rdpq_font_printf(m_font, "Your score is %.2f%%", m_score);
-
-        rdpq_font_scale(0.4f, 0.4f);
-        rdpq_font_position(30, 50);
-        rdpq_font_printf(m_font, (m_score < 75.0f) ? "You didn't score enough to continue" : "You scored high enough to continue!");
-
-        rdpq_font_end();
-
-        m_selectionBox.draw(m_font);
+        switch (mode)
+        {
+        case BUILD:
+            drawText(" Build! ");
+            break;
+        case OBSERVE:
+            drawText("Observe!");
+            break;
+        case RESULTS:
+            drawResultsText();
+            break;
+        
+        default:
+            break;
+        }
     }
 
     rdpq_font_begin(RGBA32(0x38, 0x38, 0x7F, 0xFF));
     rdpq_font_scale(0.5f, 0.5f);
-    rdpq_font_position(10,230);
+    rdpq_font_position(30.0f,220.0f);
 
-    rdpq_font_printf(m_font, "%d/%d", m_numBlocksPlaced, m_numBlocksInCastle);
+    rdpq_font_printf(global::font, "%d/%d", m_numBlocksPlaced, m_numBlocksInCastle);
 
-    rdpq_font_position(240,230);
-    rdpq_font_printf(m_font, " fps:%d", (int)(1.0f / global::elapsedSeconds));
+    // rdpq_font_position(230.0f,220.0f);
+    // rdpq_font_printf(global::font, "fps:%d", (int)(1.0f / global::elapsedSeconds));
     rdpq_font_end();
 
-    if(paused)
-    {
-        m_selectionBox.draw(m_font);
-    }
-}
 
-void LevelState::loadLevel(const char *fileNamePath)
-{
-    size_t BUFFER_SIZE = 100;
-    char mode;
-
-    FILE *file = asset_fopen(fileNamePath);
-
-    char buf[BUFFER_SIZE];
-
-    if (file)
-    {
-        while (fgets(buf, BUFFER_SIZE, file))
-        {
-            if (buf[0] == '*')
-            {
-                mode = buf[1];
-                continue;
-            }
-            else if (buf[0] == '#')
-            {
-                continue;
-            }
-
-            // remove newline
-            buf[strlen(buf) - 1] = '\0';
-
-            switch (mode)
-            {
-            case 't': // textures
-                textureMan::loadTexture(buf);
-                break;
-            case 'm': // models
-                modelMan::loadModel(buf);
-                break;
-            case 'M': // model objects
-                loadModel(buf);
-                break;
-            case 'f': // fonts
-                      // todo
-                break;
-            case 'c': // castle
-                loadCastle(file, buf);
-                break;
-            case 'T': // time to complete
-                m_amountOfTimeToBuild = strtol(buf, NULL, 10);
-            case 'O': // observatoin time
-                m_amountOfTimeToObserve = strtof(buf, NULL);
-                break;
-            default:
-                break;
-            }
-        }
-    }
-
-    fclose(file);
-}
-
-void LevelState::loadModel(const char *modelString)
-{
-    std::istringstream ss(modelString);
-    std::string model;
-    std::string texture;
-    vec3f position;
-    vec3f scale;
-
-    ss >> model >> texture >> position.x >> position.y >> position.z >> scale.x >> scale.y >> scale.z;
-
-    TexturedModel texModel(model, texture);
-    texModel.setPosition(position);
-    texModel.setScale(scale);
-
-    models.push_back(std::move(texModel));
-}
-
-void LevelState::loadCastle(FILE *file, const char *firstLine)
-{
-    size_t BUFFER_SIZE = 100;
-    char buf[BUFFER_SIZE];
-
-    strcpy(buf, firstLine);
-
-    size_t row, col, height;
-    row = 0;
-    col = 0;
-    height = 0;
-    do
-    {
-        std::istringstream ss(buf);
-
-        if (buf[0] == '#')
-        {
-            height++;
-            continue;
-        }
-
-        for (size_t col = 0; col < 10; ++col)
-        {
-            ss >> castle[height][row][col];
-            if (castle[height][row][col])
-            {
-                m_numBlocksInCastle++;
-            }
-        }
-
-        row++;
-        row %= 10;
-    } while (fgets(buf, BUFFER_SIZE, file) && buf[0] != '*');
 }
 
 void LevelState::calculateScore()
@@ -472,20 +374,48 @@ void LevelState::calculateScore()
     {
         m_score = (100.0f / (float)m_numBlocksInCastle) * (float)amountRight;
     }
+
+    if(m_score > global::saveFile.highestScores[m_currentLevel])
+    {
+        global::saveFile.highestScores[m_currentLevel] = m_score;
+        const int result = eepfs_write("/levelScores.dat", &global::saveFile, sizeof(SaveFile));
+    }
+
+    if(m_score >= m_scorePassAmount)
+    {
+        unlockNextLevel();
+    }
+}
+
+void LevelState::unlockNextLevel()
+{
+    if(global::saveFile.levelsUnlocked <= m_currentLevel + 1)
+    {
+        global::saveFile.levelsUnlocked++;
+
+        if (global::saveFile.levelsUnlocked >= global::NUM_LEVELS)
+        {
+            global::saveFile.levelsUnlocked = global::NUM_LEVELS;
+        }
+
+        const int result = eepfs_write("/levelScores.dat", &global::saveFile, sizeof(SaveFile));
+    }
+
 }
 
 void LevelState::nextLevel()
 {
     m_currentLevel++;
-    if(global::levelsUnlocked < m_currentLevel)
-    {
-        global::levelsUnlocked++;
-    }
-    
 
-    if (m_currentLevel > 5)
+    if (m_currentLevel >= global::NUM_LEVELS)
     {
-        global::levelsUnlocked = 5;
+        if(!global::saveFile.completed)
+        {
+            global::saveFile.completed = true;
+            const int result = eepfs_write("/levelScores.dat", &global::saveFile, sizeof(SaveFile));
+        }
+        
+        nextState = new EndState();
     }
     else
     {
@@ -520,7 +450,7 @@ void LevelState::nextLevel()
 
         m_numBlocksInCastle = 0;
 
-        loadLevel(str);
+        m_levelLoader.loadLevel(str);
 
         cursor.getModel().setModel("cube");
         water.setTexture("skybox");
@@ -557,4 +487,74 @@ void LevelState::resetLevel()
             }
         }
     }
+}
+
+void LevelState::drawText(const char* message)
+{
+    rdpq_font_begin(RGBA32(0x00, 0xff, 0x00, 0xFF));
+
+    rdpq_font_scale(0.80f, 0.80f);
+    rdpq_font_position(100.0f, 30.0f);
+    rdpq_font_print(global::font, message);
+
+    rdpq_font_scale(0.5f, 0.5f);
+    rdpq_font_position(80.0f, 40.0f);
+    rdpq_font_printf(global::font, "Time remaining:%d", (int)ceilf(m_timer));
+
+    if(mode == OBSERVE)
+    {
+        rdpq_font_scale(0.5f, 0.5f);
+        rdpq_font_position(110.0f, 220.0f);
+        rdpq_font_print(global::font, "B to skip");
+    }
+
+    rdpq_font_end();
+}
+
+void LevelState::drawResultsText()
+{
+    rdpq_font_begin(RGBA32(0x00, 0xff, 0x00, 0xFF));    
+
+    rdpq_font_scale(0.80f, 0.80f);
+    rdpq_font_position(110.0f, 30.0f);
+    rdpq_font_print(global::font, "Results!");
+
+    rdpq_font_scale(0.5f, 0.5f);
+    rdpq_font_position(80.0f, 40.0f);
+    rdpq_font_printf(global::font, "You scored:%.2f", m_score);
+
+    rdpq_font_scale(0.4f, 0.4f);
+    rdpq_font_position(30.0f, 50.0f);
+    rdpq_font_printf(global::font, (m_score < m_scorePassAmount) ? "You didn't score enough to continue" : "You scored high enough to continue!");
+
+    rdpq_font_end();
+
+    m_selectionBox.draw();
+}
+
+void LevelState::setModeResults()
+{
+    mode = RESULTS;
+    calculateScore();
+
+    m_selectionBox.clearOptions();
+    m_selectionBox.addOption("Main Menu");
+    m_selectionBox.addOption("Restart Level");
+    m_selectionBox.setCurrentOption(1);
+    
+    if(m_score >= m_scorePassAmount)
+    {
+        m_selectionBox.addOption("Next Level");
+        m_selectionBox.setCurrentOption(2);
+    }
+}
+
+void LevelState::setModeObserve()
+{
+}
+
+void LevelState::setModeBuild()
+{
+    m_timer = m_amountOfTimeToBuild;
+    mode = BUILD;
 }
